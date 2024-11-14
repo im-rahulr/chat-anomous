@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymous Tweeter</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js';
+    </script>
+</head>
+<body>
+    <div class="header">
+        <div class="logo-container">
+            <i class="fas fa-mask"></i>
+            <h1>Anonymous Messages</h1>
+        </div>
+    </div>
+
+    <div class="tweet-box">
+        <div class="greeting-text">What's happening?</div>
+        <textarea id="tweetInput" placeholder="Type your message here..."></textarea>
+        <div class="tweet-actions">
+            <span class="character-count">280</span>
+            <button id="tweetButton">Tweet</button>
+        </div>
+    </div>
+    <div id="tweetsContainer"></div>
+
+    <script type="module">
+        import { dbOperations, getUserId } from './firebase-config.js';
+
+        let tweetCount = 0;
+        let userTweets = new Set();
+
+        // Add this at the start of your script
+        window.addEventListener('error', function(e) {
+            console.error('Global error:', e.error);
+        });
+
+        // Add this after importing dbOperations
+        console.log('Firebase initialized');
+        window.dbOperations = dbOperations; // For debugging
+
+        // Load existing tweets
+        async function loadTweets() {
+            const loadingOverlay = showLoadingOverlay();
+            
+            try {
+                const tweets = await dbOperations.getTweets();
+                const tweetsContainer = document.getElementById('tweetsContainer');
+                tweetsContainer.innerHTML = '';
+
+                tweets.forEach((tweetData, index) => {
+                    const tweetElement = createTweetElement(
+                        tweetData.content,
+                        tweetData.tweetNumber,
+                        tweetData.id,
+                        tweetData.timestamp
+                    );
+                    
+                    // Add staggered fade-in animation
+                    tweetElement.style.opacity = '0';
+                    tweetElement.style.transform = 'translateY(20px)';
+                    tweetsContainer.appendChild(tweetElement);
+                    
+                    // Trigger animations with slight delay for each tweet
+                    setTimeout(() => {
+                        tweetElement.style.transition = 'opacity 0.3s ease-in, transform 0.3s ease-out';
+                        tweetElement.style.opacity = '1';
+                        tweetElement.style.transform = 'translateY(0)';
+                    }, index * 100);
+                    
+                    if (tweetData.tweetNumber > tweetCount) {
+                        tweetCount = tweetData.tweetNumber;
+                    }
+                    if (tweetData.userId === getUserId()) {
+                        userTweets.add(tweetData.tweetNumber);
+                    }
+                });
+            } catch (error) {
+                console.error("Error loading tweets: ", error);
+            } finally {
+                // Remove loading overlay with fade-out animation
+                loadingOverlay.style.opacity = '0';
+                setTimeout(() => loadingOverlay.remove(), 300);
+            }
+        }
+
+        // Load tweets when page loads
+        document.addEventListener('DOMContentLoaded', loadTweets);
+
+        // Tweet button click handler
+        document.getElementById('tweetButton').addEventListener('click', async function() {
+            const tweetButton = this;
+            const tweetInput = document.getElementById('tweetInput');
+            const tweet = tweetInput.value.trim();
+            
+            if (tweet) {
+                try {
+                    // Disable button and show loading state
+                    tweetButton.disabled = true;
+                    tweetButton.classList.add('tweet-button-loading');
+                    tweetButton.textContent = 'Posting...';
+                    
+                    // Create tweet
+                    tweetCount++;
+                    const tweetId = await dbOperations.addTweet({
+                        content: tweet,
+                        tweetNumber: tweetCount
+                    });
+
+                    if (!tweetId) {
+                        throw new Error('Failed to create tweet');
+                    }
+
+                    userTweets.add(tweetCount);
+                    const tweetElement = createTweetElement(tweet, tweetCount, tweetId);
+                    
+                    // Add with animation
+                    tweetElement.style.opacity = '0';
+                    tweetElement.style.transform = 'translateY(-20px)';
+                    document.getElementById('tweetsContainer').prepend(tweetElement);
+                    
+                    // Force reflow
+                    tweetElement.offsetHeight;
+                    
+                    // Trigger animation
+                    tweetElement.style.transition = 'all 0.3s ease-out';
+                    tweetElement.style.opacity = '1';
+                    tweetElement.style.transform = 'translateY(0)';
+                    
+                    // Clear input with fade
+                    tweetInput.style.transition = 'opacity 0.2s';
+                    tweetInput.style.opacity = '0';
+                    setTimeout(() => {
+                        tweetInput.value = '';
+                        tweetInput.style.opacity = '1';
+                    }, 200);
+                    
+                } catch (error) {
+                    console.error("Error posting tweet:", error);
+                    alert('Failed to post tweet. Please try again.');
+                    tweetCount--;
+                } finally {
+                    // Reset button state with animation
+                    setTimeout(() => {
+                        tweetButton.disabled = false;
+                        tweetButton.classList.remove('tweet-button-loading');
+                        tweetButton.textContent = 'Tweet';
+                    }, 300);
+                }
+            }
+        });
+
+        // First, move loadComments function outside of createTweetElement
+        async function loadComments(tweetId, commentsSection, commentBtn) {
+            try {
+                const comments = await dbOperations.getComments(tweetId);
+                
+                // Clear existing comments
+                const existingComments = commentsSection.querySelectorAll('.comment');
+                existingComments.forEach(comment => comment.remove());
+                
+                comments.forEach(commentData => {
+                    const commentElement = createCommentElement(
+                        commentData.text,
+                        commentData.isAuthor,
+                        commentData.timestamp
+                    );
+                    commentsSection.appendChild(commentElement);
+                });
+
+                commentBtn.querySelector('span').textContent = comments.length;
+            } catch (error) {
+                console.error("Error loading comments: ", error);
+            }
+        }
+
+        // Add this function before createTweetElement
+        async function loadReactions(tweetId) {
+            try {
+                const reactions = await dbOperations.getReactions(tweetId);
+                return reactions;
+            } catch (error) {
+                console.error("Error loading reactions:", error);
+                return {};
+            }
+        }
+
+        // Add this after your imports
+        const readTweets = new Set(JSON.parse(localStorage.getItem('readTweets') || '[]'));
+
+        // Update the createTweetElement function
+        function createTweetElement(tweetText, tweetNumber, tweetId, timestamp = new Date()) {
+            const div = document.createElement('div');
+            div.className = 'tweet';
+            div.dataset.tweetId = tweetId;
+            
+            const authorBadge = document.createElement('div');
+            authorBadge.className = 'author-badge';
+            authorBadge.innerHTML = `
+                <div class="author-avatar">
+                    <i class="fas fa-user-secret"></i>
+                </div>
+                <div class="author-info">
+                    <div class="author-name">Anonymous</div>
+                    <div class="author-handle">@anonymous${tweetNumber}</div>
+                </div>
+            `;
+            
+            const content = document.createElement('div');
+            content.className = 'tweet-content';
+            content.textContent = tweetText;
+
+            const interactions = document.createElement('div');
+            interactions.className = 'tweet-interactions';
+            
+            // Update the comment button section
+            const commentBtn = document.createElement('button');
+            commentBtn.className = 'interaction-btn comment-btn';
+            commentBtn.innerHTML = '<i class="far fa-comment"></i><span>0</span>';
+            
+            // Create comments section immediately but hide the input part
+            const commentsSection = document.createElement('div');
+            commentsSection.className = 'comments-section hidden'; // Add hidden class by default
+            commentsSection.innerHTML = `
+                <div class="comment-input-container hidden"> <!-- Add hidden class -->
+                    <input type="text" class="comment-input" placeholder="Write a comment...">
+                    <button class="comment-submit">Post</button>
+                </div>
+                <div class="comments-list"></div>
+            `;
+
+            // Add comment submission handler
+            const commentSubmit = commentsSection.querySelector('.comment-submit');
+            const commentInput = commentsSection.querySelector('.comment-input');
+            
+            commentSubmit.addEventListener('click', async function() {
+                const commentText = commentInput.value.trim();
+                if (commentText) {
+                    try {
+                        commentSubmit.disabled = true;
+                        commentSubmit.classList.add('loading');
+                        
+                        await dbOperations.addComment(tweetId, commentText);
+                        
+                        const commentElement = createCommentElement(commentText, true);
+                        commentElement.style.opacity = '0';
+                        commentElement.style.transform = 'scale(0.8)';
+                        
+                        commentsSection.querySelector('.comments-list').appendChild(commentElement);
+                        
+                        commentElement.offsetHeight;
+                        
+                        commentElement.style.transition = 'all 0.3s ease-out';
+                        commentElement.style.opacity = '1';
+                        commentElement.style.transform = 'scale(1)';
+                        
+                        commentInput.style.transition = 'opacity 0.2s';
+                        commentInput.style.opacity = '0';
+                        setTimeout(() => {
+                            commentInput.value = '';
+                            commentInput.style.opacity = '1';
+                        }, 200);
+                        
+                        const countSpan = commentBtn.querySelector('span');
+                        countSpan.style.transform = 'scale(1.2)';
+                        countSpan.textContent = parseInt(countSpan.textContent) + 1;
+                        setTimeout(() => {
+                            countSpan.style.transform = 'scale(1)';
+                        }, 200);
+                        
+                    } catch (error) {
+                        console.error("Error posting comment:", error);
+                        alert('Failed to post comment. Please try again.');
+                    } finally {
+                        setTimeout(() => {
+                            commentSubmit.disabled = false;
+                            commentSubmit.classList.remove('loading');
+                        }, 300);
+                    }
+                }
+            });
+
+            // Update the click handler to toggle input visibility
+            commentBtn.addEventListener('click', function() {
+                commentsSection.classList.toggle('hidden');
+                const inputContainer = commentsSection.querySelector('.comment-input-container');
+                inputContainer.classList.toggle('hidden');
+            });
+
+            // Load existing comments immediately (but keep input hidden)
+            loadComments(tweetId, commentsSection.querySelector('.comments-list'), commentBtn);
+
+            // Like button
+            const likeBtn = document.createElement('button');
+            likeBtn.className = 'interaction-btn like-btn';
+            likeBtn.innerHTML = '<i class="far fa-heart"></i>';
+
+            // Reaction button
+            const reactionBtn = document.createElement('button');
+            reactionBtn.className = 'interaction-btn reaction-btn';
+            reactionBtn.innerHTML = '<i class="far fa-smile"></i>';
+
+            // Report button
+            const reportBtn = document.createElement('button');
+            reportBtn.className = 'interaction-btn report-btn';
+            reportBtn.innerHTML = '<i class="fas fa-flag"></i>';
+
+            interactions.appendChild(commentBtn);
+            interactions.appendChild(likeBtn);
+            interactions.appendChild(reactionBtn);
+            interactions.appendChild(reportBtn);
+            
+            div.appendChild(authorBadge);
+            div.appendChild(content);
+            div.appendChild(interactions);
+            div.appendChild(commentsSection); // Add comments section to tweet
+
+            return div;
+        }
+
+        // Update createCommentElement to include timestamp
+        function createCommentElement(text, isAuthor = false, timestamp = new Date()) {
+            const comment = document.createElement('div');
+            comment.className = 'comment';
+            comment.innerHTML = `
+                <div class="comment-avatar">
+                    <i class="fas fa-user-secret"></i>
+                </div>
+                <div class="comment-content">
+                    <span class="comment-author">
+                        Anonymous
+                        ${isAuthor ? '<span class="author-tag">Author</span>' : ''}
+                    </span>
+                    <p>${text}</p>
+                    <span class="comment-time">${formatTimestamp(timestamp)}</span>
+                </div>
+            `;
+            return comment;
+        }
+
+        // Add a helper function to format timestamps
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return 'Just now';
+            
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            const now = new Date();
+            const diff = (now - date) / 1000; // difference in seconds
+
+            if (diff < 60) return 'Just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+            if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`;
+            
+            return date.toLocaleDateString();
+        }
+
+        function createJuiceEffect(element) {
+            const juice = document.createElement('div');
+            juice.className = 'juice-effect';
+            
+            // Create particles in a circle
+            const particleCount = 12;
+            for(let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                
+                // Calculate circular position
+                const angle = (i / particleCount) * Math.PI * 2;
+                const velocity = 40;
+                const tx = Math.cos(angle) * velocity;
+                const ty = Math.sin(angle) * velocity;
+                
+                particle.style.setProperty('--tx', `${tx}px`);
+                particle.style.setProperty('--ty', `${ty}px`);
+                
+                juice.appendChild(particle);
+            }
+            
+            element.appendChild(juice);
+            setTimeout(() => juice.remove(), 1000);
+        }
+
+        // Add this function to show loading overlay
+        function showLoadingOverlay() {
+            const overlay = document.createElement('div');
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = '<div class="loading-spinner"></div>';
+            document.body.appendChild(overlay);
+            return overlay;
+        }
+
+        // Add this function to check for new tweets
+        async function checkNewTweets() {
+            const tweets = await dbOperations.getTweets();
+            const newTweets = tweets.filter(tweet => !readTweets.has(tweet.id));
+            
+            if (newTweets.length > 0) {
+                document.title = `(${newTweets.length}) Anonymous Tweeter`;
+            } else {
+                document.title = 'Anonymous Tweeter';
+            }
+        }
+
+        // Add periodic check for new tweets
+        setInterval(checkNewTweets, 30000); // Check every 30 seconds
+
+        // Add this after your imports
+        let lastUpdateTime = new Date();
+
+        // Add this function to check and load new tweets
+        async function checkAndLoadNewTweets() {
+            try {
+                const tweets = await dbOperations.getTweetsAfterTimestamp(lastUpdateTime);
+                if (tweets.length > 0) {
+                    const tweetsContainer = document.getElementById('tweetsContainer');
+                    
+                    tweets.forEach(tweetData => {
+                        // Check if tweet already exists
+                        if (!document.querySelector(`.tweet[data-tweet-id="${tweetData.id}"]`)) {
+                            const tweetElement = createTweetElement(
+                                tweetData.content,
+                                tweetData.tweetNumber,
+                                tweetData.id,
+                                tweetData.timestamp
+                            );
+                            
+                            // Add fade-in and slide-down animation
+                            tweetElement.style.opacity = '0';
+                            tweetElement.style.transform = 'translateY(-20px)';
+                            tweetsContainer.prepend(tweetElement);
+                            
+                            // Force reflow
+                            tweetElement.offsetHeight;
+                            
+                            // Trigger animation
+                            requestAnimationFrame(() => {
+                                tweetElement.style.transition = 'opacity 0.3s ease-in, transform 0.3s ease-out';
+                                tweetElement.style.opacity = '1';
+                                tweetElement.style.transform = 'translateY(0)';
+                            });
+                            
+                            if (tweetData.tweetNumber > tweetCount) {
+                                tweetCount = tweetData.tweetNumber;
+                            }
+
+                            // Show notification for new tweets
+                            showNewTweetNotification();
+                        }
+                    });
+                    
+                    lastUpdateTime = new Date();
+                }
+            } catch (error) {
+                console.error("Error checking new tweets:", error);
+            }
+        }
+
+        // Add this function to show a notification when new tweets arrive
+        function showNewTweetNotification() {
+            const notification = document.createElement('div');
+            notification.className = 'tweet-notification';
+            notification.textContent = 'New tweet arrived!';
+            document.body.appendChild(notification);
+
+            // Animate notification
+            setTimeout(() => notification.classList.add('show'), 100);
+            
+            // Remove notification after 3 seconds
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        // Replace the scroll-to-top button creation and event listeners with this:
+        const scrollTopButton = document.createElement('button');
+        scrollTopButton.className = 'scroll-to-top';
+        scrollTopButton.innerHTML = '<i class="fas fa-arrow-up"></i>';
+        document.body.appendChild(scrollTopButton);
+
+        // Show/hide scroll button based on scroll position
+        window.addEventListener('scroll', () => {
+            if (window.pageYOffset > 100) {
+                scrollTopButton.classList.add('visible');
+            } else {
+                scrollTopButton.classList.remove('visible');
+            }
+        });
+
+        // Smooth scroll to top
+        scrollTopButton.addEventListener('click', () => {
+            window.scrollTo({
+                top: 0,
+                behavior: 'instant'
+            });
+        });
+
+        // Start auto-update
+        setInterval(checkAndLoadNewTweets, 3000); // Check every 3 seconds
+
+        // First, add this function at the start of your script
+        function updateGreeting() {
+            const greetingElement = document.querySelector('.greeting-text');
+            if (greetingElement) {
+                const hour = new Date().getHours();
+                let greeting = '';
+                if (hour >= 5 && hour < 12) {
+                    greeting = 'Good morning! ☀️';
+                } else if (hour >= 12 && hour < 18) {
+                    greeting = 'Good afternoon! 🌤️';
+                } else {
+                    greeting = 'Good evening! 🌙';
+                }
+                greetingElement.textContent = greeting;
+            }
+        }
+
+        // Call updateGreeting when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            updateGreeting();
+            // Update greeting every minute
+            setInterval(updateGreeting, 60000);
+        });
+    </script>
+    <div class="message-template" style="display: none;">
+        <div class="message">
+            <p class="message-text"></p>
+            <div class="message-actions">
+                <button class="like-button" onclick="toggleLike(this)">
+                    <i class="fas fa-heart"></i>
+                    <span class="like-count">0</span>
+                </button>
+                <div class="reaction-button" onclick="toggleReactions(this)">
+                    😀
+                    <div class="reaction-popup">
+                        <span onclick="addReaction(this, '👍')">👍</span>
+                        <span onclick="addReaction(this, '❤️')">❤️</span>
+                        <span onclick="addReaction(this, '😂')">😂</span>
+                        <span onclick="addReaction(this, '😮')">😮</span>
+                        <span onclick="addReaction(this, '😢')">😢</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    function toggleLike(button) {
+        button.classList.toggle('liked');
+        let countSpan = button.querySelector('.like-count');
+        let count = parseInt(countSpan.textContent);
+        
+        if (button.classList.contains('liked')) {
+            countSpan.textContent = count + 1;
+        } else {
+            countSpan.textContent = Math.max(0, count - 1);
+        }
+    }
+
+    function toggleReactions(button) {
+        const popup = button.querySelector('.reaction-popup');
+        popup.classList.toggle('show');
+    }
+
+    function addReaction(element, emoji) {
+        const messageDiv = element.closest('.message');
+        const reactionButton = messageDiv.querySelector('.reaction-button');
+        reactionButton.firstChild.textContent = emoji;
+        toggleReactions(reactionButton);
+    }
+
+    // Close reaction popups when clicking outside
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('.reaction-button')) {
+            document.querySelectorAll('.reaction-popup').forEach(popup => {
+                popup.classList.remove('show');
+            });
+        }
+    });
+    </script>
+    <button class="scroll-to-top" aria-label="Scroll to top">
+        <i class="fas fa-arrow-up"></i>
+    </button>
+</body>
+</html>
