@@ -44,13 +44,25 @@ function getUserId() {
 }
 
 export const dbOperations = {
+    // Helper function to get Firestore instance
+    getFirestoreInstance: () => {
+        return db;
+    },
+
     addTweet: async (tweetData) => {
         try {
+            // Generate a username and profile for this tweet
+            const username = tweetData.username || null;
+            const profileImage = tweetData.profileImage || null;
+            
             const docRef = await addDoc(collection(db, 'tweets'), {
                 content: tweetData.content,
                 tweetNumber: tweetData.tweetNumber,
                 timestamp: serverTimestamp(),
-                userId: getUserId()
+                userId: getUserId(),
+                username: username,
+                profileImage: profileImage,
+                isAdmin: tweetData.isAdmin || false
             });
             return docRef.id;
         } catch (error) {
@@ -248,43 +260,29 @@ export const dbOperations = {
     // Enhanced comment methods with thread support
     addComment: async function(tweetId, commentText, parentCommentId = null) {
         try {
-            // Determine if this is a top-level comment or a reply
+            // Handle both object with text property and direct string
+            const text = typeof commentText === 'object' ? commentText.text : commentText;
+            const username = typeof commentText === 'object' ? commentText.username : null;
+            const profileImage = typeof commentText === 'object' ? commentText.profileImage : null;
+            
             const commentData = {
-                text: commentText,
+                text: text,
                 userId: getUserId(),
                 timestamp: serverTimestamp(),
                 parentId: parentCommentId,
-                isAuthor: true,
-                replies: []
+                isAuthor: false, // Default, will be updated when checking author
+                username: username,
+                profileImage: profileImage
             };
             
-            let commentRef;
-            if (parentCommentId) {
-                // This is a reply to another comment
-                commentRef = await addDoc(
-                    collection(db, 'tweets', tweetId, 'comments'), 
-                    commentData
-                );
-                
-                // Update the parent comment to reference this reply
-                const parentRef = doc(db, 'tweets', tweetId, 'comments', parentCommentId);
-                await updateDoc(parentRef, {
-                    replies: arrayUnion(commentRef.id)
-                });
-            } else {
-                // This is a top-level comment
-                commentRef = await addDoc(
-                    collection(db, 'tweets', tweetId, 'comments'), 
-                    commentData
-                );
+            // Check if user is the author of the tweet
+            const tweetRef = doc(db, 'tweets', tweetId);
+            const tweetDoc = await getDoc(tweetRef);
+            if (tweetDoc.exists() && tweetDoc.data().userId === getUserId()) {
+                commentData.isAuthor = true;
             }
             
-            // Update comment count on the tweet
-            const tweetRef = doc(db, 'tweets', tweetId);
-            await updateDoc(tweetRef, {
-                commentCount: increment(1)
-            });
-            
+            const commentRef = await addDoc(collection(db, 'tweets', tweetId, 'comments'), commentData);
             return commentRef.id;
         } catch (error) {
             console.error("Error adding comment: ", error);
@@ -432,7 +430,255 @@ export const dbOperations = {
             console.error("Error getting new tweets:", error);
             throw error;
         }
+    },
+
+    checkLike: async (tweetId, userId) => {
+        try {
+            if (!userId) userId = getUserId();
+            const likeRef = doc(db, 'tweets', tweetId, 'likes', userId);
+            const likeDoc = await getDoc(likeRef);
+            return likeDoc.exists();
+        } catch (error) {
+            console.error("Error checking like:", error);
+            return false;
+        }
+    },
+    
+    // Admin panel functions
+    getStats: async () => {
+        try {
+            // Get total posts
+            const tweetsRef = collection(db, 'tweets');
+            const tweetsSnapshot = await getDocs(tweetsRef);
+            const totalPosts = tweetsSnapshot.size;
+            
+            // Get unique users
+            const userIds = new Set();
+            tweetsSnapshot.forEach(doc => {
+                const userData = doc.data();
+                if (userData.userId) {
+                    userIds.add(userData.userId);
+                }
+            });
+            
+            // Get total likes
+            let totalLikes = 0;
+            for (const tweetDoc of tweetsSnapshot.docs) {
+                const likesRef = collection(db, 'tweets', tweetDoc.id, 'likes');
+                const likesSnapshot = await getDocs(likesRef);
+                totalLikes += likesSnapshot.size;
+            }
+            
+            // Get recent activity
+            const recentActivity = [];
+            const q = query(tweetsRef, orderBy('timestamp', 'desc'));
+            const recentTweetsSnapshot = await getDocs(q);
+            
+            recentTweetsSnapshot.docs.slice(0, 5).forEach(doc => {
+                const data = doc.data();
+                recentActivity.push({
+                    action: `New post created by user ${data.userId?.substring(0, 5)}...`,
+                    timestamp: data.timestamp
+                });
+            });
+            
+            return {
+                totalPosts,
+                totalLikes,
+                uniqueUsers: userIds.size,
+                recentActivity
+            };
+        } catch (error) {
+            console.error("Error getting stats:", error);
+            throw error;
+        }
+    },
+    
+    clearAllPosts: async () => {
+        try {
+            const tweetsRef = collection(db, 'tweets');
+            const querySnapshot = await getDocs(tweetsRef);
+            
+            // Delete each tweet document
+            const deletePromises = querySnapshot.docs.map(async (tweetDoc) => {
+                // First delete all subcollections (likes, comments, reactions)
+                const likesRef = collection(db, 'tweets', tweetDoc.id, 'likes');
+                const likesSnapshot = await getDocs(likesRef);
+                likesSnapshot.forEach(likeDoc => {
+                    deleteDoc(doc(db, 'tweets', tweetDoc.id, 'likes', likeDoc.id));
+                });
+                
+                const commentsRef = collection(db, 'tweets', tweetDoc.id, 'comments');
+                const commentsSnapshot = await getDocs(commentsRef);
+                commentsSnapshot.forEach(commentDoc => {
+                    deleteDoc(doc(db, 'tweets', tweetDoc.id, 'comments', commentDoc.id));
+                });
+                
+                const reactionsRef = collection(db, 'tweets', tweetDoc.id, 'reactions');
+                const reactionsSnapshot = await getDocs(reactionsRef);
+                reactionsSnapshot.forEach(reactionDoc => {
+                    deleteDoc(doc(db, 'tweets', tweetDoc.id, 'reactions', reactionDoc.id));
+                });
+                
+                // Finally delete the tweet document itself
+                return deleteDoc(doc(db, 'tweets', tweetDoc.id));
+            });
+            
+            await Promise.all(deletePromises);
+            return true;
+        } catch (error) {
+            console.error("Error clearing posts:", error);
+            throw error;
+        }
+    },
+    
+    exportData: async () => {
+        try {
+            const tweetsRef = collection(db, 'tweets');
+            const querySnapshot = await getDocs(tweetsRef);
+            
+            const tweetsData = [];
+            
+            for (const tweetDoc of querySnapshot.docs) {
+                const tweetData = {
+                    id: tweetDoc.id,
+                    ...tweetDoc.data(),
+                    likes: [],
+                    comments: [],
+                    reactions: []
+                };
+                
+                // Get likes
+                const likesRef = collection(db, 'tweets', tweetDoc.id, 'likes');
+                const likesSnapshot = await getDocs(likesRef);
+                tweetData.likes = likesSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                
+                // Get comments
+                const commentsRef = collection(db, 'tweets', tweetDoc.id, 'comments');
+                const commentsSnapshot = await getDocs(commentsRef);
+                tweetData.comments = commentsSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                
+                // Get reactions
+                const reactionsRef = collection(db, 'tweets', tweetDoc.id, 'reactions');
+                const reactionsSnapshot = await getDocs(reactionsRef);
+                tweetData.reactions = reactionsSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                
+                tweetsData.push(tweetData);
+            }
+            
+            return {
+                exportDate: new Date().toISOString(),
+                tweets: tweetsData
+            };
+        } catch (error) {
+            console.error("Error exporting data:", error);
+            throw error;
+        }
+    },
+
+    // Add functions for reporting/flagging posts
+    flagPost: async (tweetId, reason = 'inappropriate content') => {
+        try {
+            const userId = getUserId();
+            const flagRef = doc(db, 'tweets', tweetId, 'flags', userId);
+            
+            // Create flag document
+            await setDoc(flagRef, {
+                userId: userId,
+                reason: reason,
+                timestamp: serverTimestamp()
+            });
+            
+            // Get current flag count or default to 0
+            const tweetRef = doc(db, 'tweets', tweetId);
+            const tweetDoc = await getDoc(tweetRef);
+            const currentFlagCount = tweetDoc.exists() ? (tweetDoc.data().flagCount || 0) : 0;
+            
+            // Update flag count in the main tweet document
+            await updateDoc(tweetRef, {
+                flagCount: currentFlagCount + 1
+            });
+            
+            console.log(`Post ${tweetId} flagged successfully. New flag count: ${currentFlagCount + 1}`);
+            return true;
+        } catch (error) {
+            console.error("Error flagging post:", error);
+            throw error;
+        }
+    },
+    
+    // Get all flags for a post
+    getFlags: async (tweetId) => {
+        try {
+            const flagsRef = collection(db, 'tweets', tweetId, 'flags');
+            const snapshot = await getDocs(flagsRef);
+            return snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+        } catch (error) {
+            console.error("Error getting flags:", error);
+            throw error;
+        }
+    },
+    
+    // Check if user has already flagged a post
+    hasUserFlagged: async (tweetId) => {
+        try {
+            const userId = getUserId();
+            const flagRef = doc(db, 'tweets', tweetId, 'flags', userId);
+            const flagDoc = await getDoc(flagRef);
+            return flagDoc.exists();
+        } catch (error) {
+            console.error("Error checking flag status:", error);
+            throw error;
+        }
+    },
+    
+    // Get all flagged posts (for admin panel)
+    getFlaggedPosts: async () => {
+        try {
+            const postsRef = collection(db, 'tweets');
+            const q = query(postsRef, where('flagCount', '>', 0), orderBy('flagCount', 'desc'));
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+        } catch (error) {
+            console.error("Error getting flagged posts:", error);
+            throw error;
+        }
+    },
+
+    // Add new function to get a single tweet
+    getTweetData: async (tweetId) => {
+        try {
+            const tweetRef = doc(db, 'tweets', tweetId);
+            const tweetDoc = await getDoc(tweetRef);
+            
+            if (tweetDoc.exists()) {
+                return {
+                    id: tweetDoc.id,
+                    ...tweetDoc.data()
+                };
+            } else {
+                return null;
+            }
+        } catch (error) {
+            console.error("Error getting tweet data:", error);
+            throw error;
+        }
     }
 };
 
-export { getUserId }; 
+export { getUserId, collection, doc, onSnapshot }; 

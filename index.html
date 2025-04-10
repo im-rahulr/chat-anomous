@@ -8,15 +8,785 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
-        import { getFirestore } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js';
+        import { dbOperations, getUserId, collection, doc, onSnapshot } from './firebase-config.js';
+    </script>
+    <style>
+        :root {
+            --bg-color: #000000;
+            --text-color: #E7E9EA;
+            --header-bg: rgba(22, 24, 28, 0.5);  /* More transparent */
+            --border-color: #2F3336;
+            --accent-color: #1d9bf0;
+            --secondary-color: #71767B;
+            --hover-color: rgba(29, 155, 240, 0.1);
+            --post-bg: #000000;
+            --notification-bg: rgba(22, 24, 28, 0.95);
+            --avatar-bg: #1d9bf0;
+            --shadow-color: rgba(0, 0, 0, 0.2);
+            --success-color: #00ba7c;
+            --error-color: #ff3b30;
+            --warning-color: #ff9500;
+            --button-text: white;
+        }
+        
+        body.light-theme {
+            --bg-color: #ffffff;
+            --text-color: #14171a;
+            --header-bg: rgba(255, 255, 255, 0.7);  /* More transparent */
+            --border-color: #e1e8ed;
+            --accent-color: #1da1f2;
+            --secondary-color: #657786;
+            --hover-color: rgba(29, 155, 240, 0.1);
+            --post-bg: #ffffff;
+            --notification-bg: rgba(255, 255, 255, 0.95);
+            --avatar-bg: #1da1f2;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --success-color: #28cd41;
+            --error-color: #ff3b30;
+            --warning-color: #ff9500;
+            --button-text: white;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        
+        /* Header styles with improved transparent blur */
+        .header {
+            position: sticky;
+            top: 0;
+            background: var(--header-bg);
+            padding: 15px 20px;
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+            z-index: 999;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .theme-toggle {
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-size: 1.2rem;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s ease;
+        }
+        
+        .theme-toggle:hover {
+            background-color: var(--hover-color);
+        }
+        
+        .tweet-box, .tweet {
+            background-color: var(--post-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+        }
+        
+        /* Add CSS for profile images and time display */
+        .profile-image {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: contain;
+            background-color: var(--avatar-bg);
+            display: block;
+            overflow: hidden;
+        }
+        
+        .profile-image svg {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Fallback avatar styles */
+        .fallback-avatar {
+            width: 100%;
+            height: 100%;
+            background-color: var(--avatar-bg);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        .comment-fallback {
+            font-size: 14px;
+        }
+        
+        .tweet-time {
+            color: #71767B;
+            font-size: 14px;
+            margin-left: auto;
+            white-space: nowrap;
+        }
+        
+        .author-badge {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            width: 100%;
+        }
+        
+        .author-avatar {
+            margin-right: 8px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--avatar-bg);
+        }
+        
+        .author-info {
+            display: flex;
+            flex-direction: column;
+            margin-right: 8px;
+        }
+        
+        /* Comment profile image styles */
+        .comment-profile {
+            width: 32px;
+            height: 32px;
+        }
+        
+        .comment-avatar {
+            width: 32px;
+            height: 32px;
+            margin-right: 10px;
+            overflow: hidden;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--avatar-bg);
+        }
+        
+        /* Update existing elements to use CSS variables */
+        .profile-image {
+            background-color: var(--avatar-bg);
+        }
+        
+        .author-avatar, .comment-avatar {
+            background-color: var(--avatar-bg);
+        }
+        
+        .fallback-avatar {
+            background-color: var(--avatar-bg);
+        }
+        
+        .tweet-box, .tweet {
+            background-color: var(--post-bg);
+            border-color: var(--border-color);
+        }
+        
+        input, textarea, button {
+            color: var(--text-color);
+        }
+        
+        input, textarea {
+            background-color: var(--post-bg);
+            border-color: var(--border-color);
+        }
+        
+        .notification.success {
+            background-color: var(--success-color);
+        }
+        
+        .notification.error {
+            background-color: var(--error-color);
+        }
+        
+        .notification.warning {
+            background-color: var(--warning-color);
+        }
+        
+        /* Add a little transition to all elements */
+        * {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+        }
+        
+        /* Additional light theme improvements */
+        .comment-input, .reply-input {
+            background-color: var(--post-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+        
+        .comment-input::placeholder, .reply-input::placeholder, #tweetInput::placeholder {
+            color: var(--secondary-color);
+        }
+        
+        .comment-submit, .reply-submit {
+            background-color: var(--accent-color);
+            color: var(--button-text);
+        }
+        
+        .interaction-btn {
+            color: var(--secondary-color);
+        }
+        
+        .interaction-btn:hover {
+            color: var(--accent-color);
+        }
+        
+        .like-btn.active {
+            color: #f91880 !important;
+        }
+        
+        .tweet-content {
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+        
+        .author-name, .author-handle, .comment-author {
+            color: var(--text-color);
+        }
+        
+        .author-handle, .comment-time {
+            color: var(--secondary-color);
+        }
+        
+        /* Fix for reaction panel in light theme */
+        .reaction-panel {
+            background-color: var(--notification-bg);
+            border-color: var(--border-color);
+        }
+        
+        .reaction-panel button {
+            background-color: var(--hover-color);
+        }
+        
+        /* Add loading styles for reaction buttons */
+        .reaction-panel button.loading {
+            opacity: 0.7;
+            pointer-events: none;
+            position: relative;
+        }
+        
+        .reaction-panel button.loading::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            top: 50%;
+            left: 50%;
+            margin: -8px 0 0 -8px;
+            border: 2px solid transparent;
+            border-top-color: var(--text-color);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        .reaction-panel.showing {
+            animation: popIn 0.3s ease-out;
+        }
+        
+        /* Mobile reaction panel styles */
+        .reaction-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1999;
+            animation: fadeIn 0.2s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .reaction-panel.mobile-panel {
+            width: 90%;
+            max-width: 400px;
+            justify-content: space-around;
+            padding: 16px;
+            border-radius: 20px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+            animation: slideUpMobile 0.3s ease-out;
+        }
+        
+        @keyframes slideUpMobile {
+            from { 
+                transform: translate(-50%, 100%);
+                opacity: 0;
+            }
+            to { 
+                transform: translate(-50%, 0);
+                opacity: 1; 
+            }
+        }
+        
+        .reaction-panel.mobile-panel button {
+            width: 48px;
+            height: 48px;
+            font-size: 1.6em;
+            margin: 0 5px;
+            /* Improve touch targets */
+            min-width: 44px;
+            min-height: 44px;
+        }
+        
+        /* Additional mobile optimizations */
+        @media (max-width: 480px) {
+            .reaction-panel.mobile-panel {
+                padding: 12px;
+                width: 95%;
+            }
+            
+            .reaction-panel.mobile-panel button {
+                width: 40px;
+                height: 40px;
+                margin: 0 2px;
+            }
+            
+            /* Make interaction buttons easier to tap */
+            .interaction-btn {
+                min-width: 40px;
+                min-height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
+        
+        /* Improve white theme */
+        body.light-theme {
+            --bg-color: #ffffff;
+            --text-color: #14171a;
+            --header-bg: rgba(255, 255, 255, 0.95);
+            --border-color: #e1e8ed;
+            --accent-color: #1da1f2;
+            --secondary-color: #657786;
+            --hover-color: rgba(29, 155, 240, 0.1);
+            --post-bg: #ffffff;
+            --notification-bg: rgba(255, 255, 255, 0.95);
+            --avatar-bg: #1da1f2;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --success-color: #28cd41;
+            --error-color: #ff3b30;
+            --warning-color: #ff9500;
+            --button-text: white;
+        }
+        
+        /* Fix textarea in light theme */
+        #tweetInput {
+            width: 100%;
+            min-height: 60px;
+            max-height: 200px;
+            padding: 10px 0;
+            border: none;
+            margin-bottom: 12px;
+            resize: none;
+            background-color: transparent;
+            color: var(--text-color);
+            font-size: 16px;
+            line-height: 22px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow-y: hidden; /* Hide scrollbar */
+            transition: height 0.2s ease;
+        }
+        
+        #tweetInput:focus {
+            outline: none;
+        }
+        
+        #tweetInput::placeholder {
+            color: rgba(113, 118, 123, 0.8);
+            font-style: italic;
+            font-size: 15px;
+            opacity: 0.8;
+            transition: opacity 0.2s ease;
+        }
+        
+        #tweetInput:focus::placeholder {
+            opacity: 0.5;
+        }
+        
+        /* Fix for buttons */
+        #tweetButton, .interaction-btn {
+            color: var(--accent-color);
+        }
+        
+        #tweetButton {
+            background: linear-gradient(45deg, #1da1f2, #0077e2);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 8px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            box-shadow: 0 2px 5px rgba(29, 155, 240, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #tweetButton::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: all 0.6s ease;
+        }
+        
+        #tweetButton:hover::before {
+            left: 100%;
+        }
+        
+        #tweetButton:hover {
+            filter: brightness(1.1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(29, 155, 240, 0.4);
+        }
+        
+        #tweetButton:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 3px rgba(29, 155, 240, 0.3);
+        }
+        
+        /* Button loading animation */
+        .tweet-button-loading {
+            position: relative;
+            color: transparent !important;
+        }
+        
+        .tweet-button-loading::after {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            top: 50%;
+            left: 50%;
+            margin: -8px 0 0 -8px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        .tweet {
+            background-color: var(--post-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 10px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px var(--shadow-color);
+            transition: all 0.3s ease;
+        }
+        
+        .tweet:hover {
+            box-shadow: 0 2px 8px var(--shadow-color);
+            transform: translateY(-1px);
+        }
+        
+        .author-badge {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            width: 100%;
+        }
+        
+        .author-avatar {
+            margin-right: 8px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--avatar-bg);
+        }
+        
+        .tweet-content {
+            font-size: 15px;
+            line-height: 1.3;
+            margin: 4px 0 8px;
+        }
+        
+        .tweet-interactions {
+            display: flex;
+            justify-content: space-between;
+            max-width: 400px;
+            margin-top: 6px;
+        }
+        
+        .interaction-btn {
+            background: none;
+            border: none;
+            padding: 5px;
+            border-radius: 50%;
+            cursor: pointer;
+            color: #71767B;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+        
+        .interaction-btn i {
+            font-size: 14px;
+        }
+        
+        .like-counter {
+            font-size: 13px;
+            color: var(--secondary-color);
+            margin-left: 2px;
+        }
+        
+        /* Comment section with reduced spacing */
+        .comments-section {
+            margin-top: 8px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 8px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .comment-input-container {
+            display: flex;
+            margin-bottom: 10px;
+            gap: 8px;
+        }
+        
+        .comment-input {
+            flex: 1;
+            padding: 8px 12px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            background-color: var(--post-bg);
+            color: var(--text-color);
+            font-size: 14px;
+        }
+        
+        .comment-submit {
+            background-color: var(--accent-color);
+            color: var(--button-text);
+            border: none;
+            border-radius: 16px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            font-size: 13px;
+        }
+        
+        .comment {
+            padding: 6px 0;
+            display: flex;
+            margin-bottom: 4px;
+        }
+        
+        .comment-content {
+            font-size: 14px;
+            line-height: 1.3;
+        }
+        
+        .comment-content p {
+            margin: 2px 0 4px;
+        }
+        
+        .comment-author {
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .comment-time {
+            font-size: 12px;
+            color: var(--secondary-color);
+            margin-left: 5px;
+        }
+        
+        .replies-container {
+            margin-left: 20px;
+            margin-top: 4px;
+        }
+        
+        .reply {
+            padding: 5px 0;
+            margin-bottom: 3px;
+        }
+        
+        /* Simplified tweet box */
+        .tweet-box {
+            background-color: var(--post-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 12px 15px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .tweet-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, #1da1f2, #9033f5, #1da1f2);
+            background-size: 200% 100%;
+            animation: gradientMove 3s ease infinite;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .tweet-box:focus-within::before {
+            opacity: 1;
+        }
+        
+        @keyframes gradientMove {
+            0% { background-position: 0% 0; }
+            50% { background-position: 100% 0; }
+            100% { background-position: 0% 0; }
+        }
+        
+        .tweet-box:focus-within {
+            border-color: rgba(29, 155, 240, 0.5);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transform: translateY(-1px);
+        }
+        
+        #tweetInput {
+            width: 100%;
+            height: 60px;
+            padding: 5px 0;
+            border: none;
+            margin-bottom: 10px;
+            resize: none;
+            background-color: transparent;
+            color: var(--text-color);
+            font-size: 16px;
+            line-height: 22px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        #tweetInput:focus {
+            outline: none;
+        }
+        
+        #tweetInput::placeholder {
+            color: rgba(113, 118, 123, 0.8);
+            font-style: italic;
+        }
+        
+        .tweet-actions {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+        }
+        
+        #tweetButton {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 8px 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            box-shadow: 0 2px 5px rgba(29, 155, 240, 0.3);
+        }
+        
+        #tweetButton:hover {
+            filter: brightness(1.1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(29, 155, 240, 0.4);
+        }
+        
+        #tweetButton:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 3px rgba(29, 155, 240, 0.3);
+        }
+        
+        .reaction-panel button:hover {
+            transform: scale(1.2);
+            background-color: rgba(255, 255, 255, 0.15);
+        }
+        
+        /* Active state for touch devices */
+        .reaction-panel button:active {
+            transform: scale(0.9);
+            transition: transform 0.1s ease;
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        /* Add specific touch feedback */
+        @media (hover: none) {
+            .reaction-panel button:hover {
+                transform: none;
+                background-color: rgba(255, 255, 255, 0.08);
+            }
+            
+            .reaction-panel button:active {
+                transform: scale(0.9);
+                background-color: rgba(255, 255, 255, 0.2);
+            }
+        }
+    </style>
+
+    <script>
+        !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug getPageViewId captureTraceFeedback captureTraceMetric".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+        posthog.init('phc_UOdKm95N8QaKxaZvW1WBPdb3AqIHOTFBgf696oExyDa', {
+            api_host: 'https://us.i.posthog.com',
+            person_profiles: 'identified_only', // or 'always' to create profiles for anonymous users as well
+        });
     </script>
 </head>
 <body>
     <div class="header">
         <div class="logo-container">
             <i class="fas fa-mask"></i>
-            <h1>Anonymous Messages</h1>
+            <h1>Msg-Secret</h1>
+        </div>
+        <div class="header-actions">
+            <a href="about.html" class="nav-btn about-btn">About</a>
+            <!-- <a href="contact.html" class="nav-btn contact-btn">Contact</a> -->
         </div>
     </div>
 
@@ -27,11 +797,9 @@
     </div>
 
     <div class="tweet-box">
-        <div class="greeting-text">What's happening?</div>
-        <textarea id="tweetInput" placeholder="Type your message here..."></textarea>
+        <textarea id="tweetInput" placeholder="Send your anonymous message..."></textarea>
         <div class="tweet-actions">
-            <span class="character-count">280</span>
-            <button id="tweetButton">Tweet</button>
+            <button id="tweetButton">Post✨</button>
         </div>
     </div>
     <div id="tweetsContainer"></div>
@@ -39,12 +807,30 @@
     <!-- Notification container -->
     <div id="notificationContainer" class="notification-container"></div>
 
-    <script type="module">
-        import { dbOperations, getUserId } from './firebase-config.js';
+    <!-- Report confirmation dialog -->
+    <div id="reportDialog" class="report-dialog">
+        <div class="dialog-content">
+            <h3>Report Post</h3>
+            <p>This post has been reported and will be reviewed by the admin. It may be removed after review.</p>
+            <div class="dialog-actions">
+                <button id="cancelReportBtn" class="dialog-button">Cancel</button>
+                <button id="confirmReportBtn" class="dialog-button confirm">Report</button>
+            </div>
+        </div>
+    </div>
 
+    <script type="module">
+        import { dbOperations, getUserId, collection, doc, onSnapshot } from './firebase-config.js';
+
+        // Set character limit to 1000 instead of 280
+        const CHARACTER_LIMIT = 1000;
+        
         let tweetCount = 0;
         let userTweets = new Set();
         let activeListeners = {}; // Store active listeners to manage them
+        
+        // Initialize report dialog state
+        let isReportDialogOpen = false;
         
         // New post notification system variables
         let newPostsCount = 0;
@@ -53,6 +839,47 @@
         let readPosts = new Set(JSON.parse(localStorage.getItem('readPosts') || '[]'));
         let isUserAtBottom = false;
         let isUserScrolling = false;
+        
+        // Profanity filter words
+        const profanityList = [
+            'fuck', 'f*ck', 'fck', 'fuk', 'fuuk', 'f**k', 'f***', 
+            'sex', 's*x', 'sexx', 'sx',
+            'shit', 'sh*t', 'ass', 'a$$', 'asshole',
+            'bitch', 'b*tch', 'bastard', 'cunt', 'c*nt',
+            'dick', 'd*ck', 'pussy', 'p*ssy', 'cock', 'c*ck',
+            'jerk', 'jackass', 'whore', 'wh*re'
+        ];
+        
+        // Function to filter profanity from text
+        function filterProfanity(text) {
+            if (!text) return text;
+            
+            let filteredText = text;
+            
+            // Case insensitive replacement for each profanity word
+            profanityList.forEach(word => {
+                // Create a regular expression with word boundary to match whole words
+                const regex = new RegExp('\\b' + word.replace(/\*/g, '[^\\s]*') + '\\b', 'gi');
+                
+                // Replace with censored version
+                filteredText = filteredText.replace(regex, match => {
+                    if (match.length <= 2) return match;
+                    
+                    // Keep first and last character, censor the rest
+                    if (match.length <= 4) {
+                        return match.charAt(0) + '*' + match.charAt(match.length - 1);
+                    } else {
+                        return match.charAt(0) + '*'.repeat(match.length - 2) + match.charAt(match.length - 1);
+                    }
+                });
+            });
+            
+            // Special handling for specific words like "FUCK", "sex"
+            filteredText = filteredText.replace(/\b[fF][uU\*][cC\*][kK\*]\b/gi, 'F**K');
+            filteredText = filteredText.replace(/\b[sS][eE\*][xX\*]\b/gi, 's*x');
+            
+            return filteredText;
+        }
         
         // Add intersection observer for new post detection
         const postObserver = new IntersectionObserver((entries) => {
@@ -78,6 +905,159 @@
         // Add this after importing dbOperations
         console.log('Firebase initialized');
         window.dbOperations = dbOperations; // For debugging
+
+        // Color and fruit arrays for username generation
+        const colors = [
+            "Red", "Blue", "Green", "Yellow", "Purple", "Orange", "Pink", 
+            "Teal", "Indigo", "Crimson", "Magenta", "Cyan", "Lime", "Violet",
+            "Maroon", "Turquoise", "Gold", "Silver", "Navy", "Emerald"
+        ];
+        
+        const fruits = [
+            "Apple", "Banana", "Cherry", "Durian", "Elderberry", "Fig", "Grape",
+            "Honeydew", "Kiwi", "Lemon", "Mango", "Nectarine", "Orange", "Peach",
+            "Quince", "Raspberry", "Strawberry", "Tangerine", "Watermelon", "Zucchini",
+            "Apricot", "Blackberry", "Coconut", "Dragonfruit", "Guava", "Jackfruit", "Papaya"
+        ];
+        
+        // Map to store username by tweet ID
+        const tweetUsernames = new Map();
+        
+        // Map to store profile image by tweet ID
+        const tweetProfiles = new Map();
+        
+        // Now we also need to store comment usernames and profile images
+        const commentUsernames = new Map();
+        const commentProfiles = new Map();
+        
+        // Generate a random fruit-color username
+        function generateUsername() {
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const fruit = fruits[Math.floor(Math.random() * fruits.length)];
+            return color + fruit;
+        }
+        
+        // Generate a random profile image using DiceBear API with fallback options
+        function generateProfileImage() {
+            // Alternative 1: DiceBear API
+            if (Math.random() > 0.3) {
+                const collections = ['adventurer', 'avataaars', 'bottts', 'identicon', 'micah', 'pixel-art', 'lorelei', 'initials'];
+                const collection = collections[Math.floor(Math.random() * collections.length)];
+                const seed = Math.random().toString(36).substring(2);
+                return `https://api.dicebear.com/6.x/${collection}/svg?seed=${seed}`;
+            } 
+            // Alternative 2: RoboHash
+            else if (Math.random() > 0.5) {
+                const seed = Math.random().toString(36).substring(2);
+                return `https://robohash.org/${seed}?size=40x40&set=set4`;
+            } 
+            // Alternative 3: UI Avatars (text-based avatars)
+            else {
+                const colorFruit = generateUsername();
+                const initials = colorFruit.substring(0, 2);
+                const bgColor = Math.floor(Math.random()*16777215).toString(16);
+                return `https://ui-avatars.com/api/?name=${initials}&background=${bgColor}&color=fff`;
+            }
+        }
+        
+        // Function to start time refreshing for tweets
+        function startTimeRefresh() {
+            // Update all timestamps every 30 seconds
+            setInterval(() => {
+                // Update tweet timestamps
+                document.querySelectorAll('.tweet').forEach(tweet => {
+                    const timestampElement = tweet.querySelector('.tweet-time');
+                    if (timestampElement && tweet.dataset.timestamp) {
+                        const timestamp = parseInt(tweet.dataset.timestamp);
+                        if (!isNaN(timestamp)) {
+                            timestampElement.textContent = formatTimestamp(new Date(timestamp));
+                        }
+                    }
+                });
+                
+                // Update comment timestamps
+                document.querySelectorAll('.comment').forEach(comment => {
+                    const timestampElement = comment.querySelector('.comment-time');
+                    if (timestampElement && comment.dataset.timestamp) {
+                        const timestamp = parseInt(comment.dataset.timestamp);
+                        if (!isNaN(timestamp)) {
+                            timestampElement.textContent = formatTimestamp(new Date(timestamp));
+                        }
+                    }
+                });
+            }, 30000); // Update every 30 seconds instead of every minute
+        }
+        
+        // Improved timestamp formatting function
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return 'Just now';
+            
+            let date;
+            try {
+                // Handle various timestamp formats
+                if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+                    // Firebase Timestamp
+                    date = timestamp.toDate();
+                } else if (timestamp.seconds && timestamp.nanoseconds) {
+                    // Firebase Timestamp object format
+                    date = new Date(timestamp.seconds * 1000 + timestamp.nanoseconds / 1000000);
+                } else if (typeof timestamp === 'string') {
+                    // String timestamp
+                    date = new Date(timestamp);
+                } else if (typeof timestamp === 'number') {
+                    // Numeric timestamp (milliseconds)
+                    date = new Date(timestamp);
+                } else {
+                    // Direct Date object
+                    date = new Date(timestamp);
+                }
+                
+                // Check if date is valid
+                if (isNaN(date.getTime())) {
+                    console.warn("Invalid date detected:", timestamp);
+                    return 'Just now';
+                }
+                
+                const now = new Date();
+                const diff = Math.round((now - date) / 1000); // difference in seconds
+
+                // If timestamp is in the future or very recent (within 5 seconds)
+                if (diff < 5) return 'Just now';
+                
+                // Seconds
+                if (diff < 60) return `${diff} second${diff !== 1 ? 's' : ''} ago`;
+                
+                // Minutes
+                const minutes = Math.floor(diff / 60);
+                if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+                
+                // Hours
+                const hours = Math.floor(minutes / 60);
+                if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+                
+                // Days
+                const days = Math.floor(hours / 24);
+                if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`;
+                
+                // Weeks
+                const weeks = Math.floor(days / 7);
+                if (weeks < 4) return `${weeks} week${weeks !== 1 ? 's' : ''} ago`;
+                
+                // Months or Specific date
+                const months = Math.floor(days / 30);
+                if (months < 12) return `${months} month${months !== 1 ? 's' : ''} ago`;
+                
+                // For older timestamps, show the actual date
+                return date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            } catch (error) {
+                console.error("Error formatting timestamp:", error, timestamp);
+                return 'Just now';
+            }
+        }
 
         // Load existing tweets
         async function loadTweets() {
@@ -120,6 +1100,21 @@
                     tweetsContainer.innerHTML = '';
 
                     tweets.forEach((tweetData, index) => {
+                        // Store username and profile image from Firebase if available
+                        if (tweetData.username) {
+                            tweetUsernames.set(tweetData.id, tweetData.username);
+                        } else if (!tweetUsernames.has(tweetData.id)) {
+                            // Generate if not in Firebase or local map
+                            tweetUsernames.set(tweetData.id, generateUsername());
+                        }
+                        
+                        if (tweetData.profileImage) {
+                            tweetProfiles.set(tweetData.id, tweetData.profileImage);
+                        } else if (!tweetProfiles.has(tweetData.id)) {
+                            // Generate if not in Firebase or local map
+                            tweetProfiles.set(tweetData.id, generateProfileImage());
+                        }
+                        
                         const tweetElement = createTweetElement(
                             tweetData.content,
                             tweetData.tweetNumber,
@@ -159,13 +1154,15 @@
                         // Load reactions for this tweet
                         setupReactionListeners(tweetData.id);
                         
+                        // Load comments for this tweet immediately to get the count
+                        setupCommentListeners(tweetData.id);
+
                         // Add to Intersection Observer to detect when user views it
                         postObserver.observe(tweetElement);
                     });
                     
                     // Hide loading overlay once tweets are loaded
-                    loadingOverlay.style.opacity = '0';
-                    setTimeout(() => loadingOverlay.remove(), 300);
+                    hideLoadingOverlay();
                 });
                 
                 // Store the unsubscribe function
@@ -173,17 +1170,100 @@
                 
             } catch (error) {
                 console.error("Error loading tweets: ", error);
-                loadingOverlay.style.opacity = '0';
-                setTimeout(() => loadingOverlay.remove(), 300);
+                hideLoadingOverlay();
             }
         }
 
         // Load tweets when page loads
         document.addEventListener('DOMContentLoaded', () => {
-            loadTweets();
+            // Use a small delay to ensure Firebase is fully initialized
+            setTimeout(() => {
+                loadTweets();
+            }, 100);
+            
             // Clean up old read posts on page load
             cleanupReadPosts();
+            // Start timestamp refresh
+            startTimeRefresh();
+            
+            // Auto-resize the textarea based on content
+            const tweetInput = document.getElementById('tweetInput');
+            tweetInput.addEventListener('input', autoResizeTextarea);
+            
+            // Initialize height
+            setTimeout(() => autoResizeTextarea.call(tweetInput), 0);
+            
+            // Initialize report dialog controls
+            const reportDialog = document.getElementById('reportDialog');
+            const cancelReportBtn = document.getElementById('cancelReportBtn');
+            const confirmReportBtn = document.getElementById('confirmReportBtn');
+            
+            // Ensure the report dialog is hidden initially
+            reportDialog.classList.remove('active');
+            
+            // Add event listeners for report dialog buttons
+            cancelReportBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                reportDialog.classList.remove('active');
+                isReportDialogOpen = false;
+            });
+            
+            // Close report dialog when clicking outside
+            reportDialog.addEventListener('click', function(e) {
+                if (e.target === reportDialog) {
+                    reportDialog.classList.remove('active');
+                    isReportDialogOpen = false;
+                }
+            });
+            
+            confirmReportBtn.addEventListener('click', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const currentTweetId = reportDialog.dataset.tweetId;
+                reportDialog.classList.remove('active');
+                isReportDialogOpen = false;
+                
+                if (!currentTweetId) return;
+                
+                // Get the report button for the current tweet
+                const tweetElement = document.querySelector(`.tweet[data-tweet-id="${currentTweetId}"]`);
+                if (!tweetElement) return;
+                
+                const currentReportBtn = tweetElement.querySelector('.report-btn');
+                if (!currentReportBtn) return;
+                
+                // Update UI
+                currentReportBtn.disabled = true;
+                currentReportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                
+                try {
+                    await dbOperations.flagPost(currentTweetId);
+                    
+                    // Update button style
+                    currentReportBtn.className = 'interaction-btn report-btn reported';
+                    currentReportBtn.innerHTML = '<i class="fas fa-flag"></i>';
+                    currentReportBtn.disabled = false;
+                    
+                    showNotification('Post reported successfully', 'success');
+                } catch (error) {
+                    console.error("Error reporting post:", error);
+                    currentReportBtn.disabled = false;
+                    currentReportBtn.innerHTML = '<i class="fas fa-flag"></i>';
+                    showNotification('Error reporting post', 'error');
+                }
+            });
+            
+            // Set the dialog as initialized
+            window.reportDialogInitialized = true;
         });
+
+        // Function to auto-resize textarea
+        function autoResizeTextarea() {
+            this.style.height = 'auto';
+            const newHeight = Math.min(this.scrollHeight, 200);
+            this.style.height = newHeight + 'px';
+        }
 
         // Tweet button click handler
         document.getElementById('tweetButton').addEventListener('click', async function() {
@@ -191,23 +1271,53 @@
             const tweetInput = document.getElementById('tweetInput');
             const tweet = tweetInput.value.trim();
             
+            // Ensure the report dialog is closed
+            const reportDialog = document.getElementById('reportDialog');
+            if (reportDialog.classList.contains('active')) {
+                reportDialog.classList.remove('active');
+                isReportDialogOpen = false;
+            }
+            
             if (tweet) {
                 try {
                     // Disable button and show loading state
                     tweetButton.disabled = true;
                     tweetButton.classList.add('tweet-button-loading');
-                    tweetButton.textContent = 'Posting...';
+                    tweetButton.textContent = 'Sending...';
                     
-                    // Create tweet
+                    // Filter profanity from the tweet content
+                    const filteredTweet = filterProfanity(tweet);
+                    
+                    // Generate username and profile image for this tweet
+                    const username = generateUsername();
+                    const profileImage = generateProfileImage();
+                    
+                    // Create tweet with error handling
                     tweetCount++;
-                    const tweetId = await dbOperations.addTweet({
-                        content: tweet,
-                        tweetNumber: tweetCount
-                    });
-
-                    if (!tweetId) {
-                        throw new Error('Failed to create tweet');
+                    let tweetId;
+                    
+                    try {
+                        tweetId = await dbOperations.addTweet({
+                            content: filteredTweet,
+                            tweetNumber: tweetCount,
+                            username: username,
+                            profileImage: profileImage
+                        });
+                    } catch (dbError) {
+                        console.error("Firebase error adding tweet:", dbError);
+                        showNotification('Network error. Please try again.', 'error');
+                        tweetCount--;
+                        throw dbError;
                     }
+
+                    // Verify tweet was added successfully
+                    if (!tweetId) {
+                        throw new Error('Failed to create tweet - no ID returned');
+                    }
+
+                    // Store the username and profile image in the maps
+                    tweetUsernames.set(tweetId, username);
+                    tweetProfiles.set(tweetId, profileImage);
 
                     userTweets.add(tweetCount);
                     
@@ -223,18 +1333,24 @@
                         tweetInput.style.opacity = '1';
                     }, 200);
                     
+                    // Show success notification
+                    showNotification('Message sent successfully!', 'success');
+                    
                 } catch (error) {
                     console.error("Error posting tweet:", error);
-                    alert('Failed to post tweet. Please try again.');
+                    showNotification('Failed to send message. Please try again.', 'error');
                     tweetCount--;
                 } finally {
                     // Reset button state with animation
                     setTimeout(() => {
                         tweetButton.disabled = false;
                         tweetButton.classList.remove('tweet-button-loading');
-                        tweetButton.textContent = 'Tweet';
+                        tweetButton.textContent = 'Send';
                     }, 300);
                 }
+            } else {
+                // Show notification for empty message
+                showNotification('Please enter a message before sending', 'warning');
             }
         });
 
@@ -318,13 +1434,67 @@
         
         // Update the comments UI for a specific tweet
         function updateCommentsUI(tweetId, comments, commentsSection) {
+            // First, update the comment count
+            const tweetElement = document.querySelector(`.tweet[data-tweet-id="${tweetId}"]`);
+            if (tweetElement) {
+                const commentBtn = tweetElement.querySelector('.comment-btn');
+                if (commentBtn) {
+                    const countSpan = commentBtn.querySelector('span');
+                    if (countSpan) {
+                        // Count all comments, including replies
+                        const totalComments = comments.length;
+                        countSpan.textContent = totalComments;
+                        
+                        // Add a visual indicator if there are comments
+                        if (totalComments > 0) {
+                            commentBtn.classList.add('has-comments');
+                        } else {
+                            commentBtn.classList.remove('has-comments');
+                        }
+                    }
+                }
+            }
+            
+            // Clear existing comments
             commentsSection.innerHTML = '';
             
-            // Sort top-level comments by timestamp (newest first)
-            const topLevelComments = comments.filter(comment => !comment.parentId)
-                .sort((a, b) => b.timestamp - a.timestamp);
+            // No comments message
+            if (comments.length === 0) {
+                const noCommentsMessage = document.createElement('div');
+                noCommentsMessage.className = 'no-comments-message';
+                noCommentsMessage.textContent = 'No comments yet. Be the first to comment!';
+                commentsSection.appendChild(noCommentsMessage);
+                return;
+            }
             
-            topLevelComments.forEach(comment => {
+            // Sort top-level comments by timestamp (newest first)
+            const sortedComments = comments
+                .sort((a, b) => {
+                    // Convert timestamps to dates for comparison
+                    const timeA = a.timestamp?.seconds ? a.timestamp.seconds * 1000 : 0;
+                    const timeB = b.timestamp?.seconds ? b.timestamp.seconds * 1000 : 0;
+                    return timeB - timeA;
+                });
+            
+            // Add comments to the UI
+            sortedComments.forEach(comment => {
+                // Store username and profile image from Firebase if available
+                const commentId = comment.id;
+                
+                if (comment.username) {
+                    commentUsernames.set(commentId, comment.username);
+                } else if (!commentUsernames.has(commentId)) {
+                    // Generate if not in Firebase or local map
+                    commentUsernames.set(commentId, generateUsername());
+                }
+                
+                if (comment.profileImage) {
+                    commentProfiles.set(commentId, comment.profileImage);
+                } else if (!commentProfiles.has(commentId)) {
+                    // Generate if not in Firebase or local map
+                    commentProfiles.set(commentId, generateProfileImage());
+                }
+                
                 const commentElement = createCommentElement(comment.text, comment.isAuthor, comment.timestamp);
                 commentElement.dataset.commentId = comment.id;
                 
@@ -338,142 +1508,38 @@
                 commentsSection.appendChild(commentElement);
                 
                 // Find and add replies to this comment
-                const replies = comments.filter(c => c.parentId === comment.id)
-                    .sort((a, b) => a.timestamp - b.timestamp);
-                
+                const replies = comments.filter(c => c.parentId === comment.id);
                 if (replies.length > 0) {
                     const repliesContainer = document.createElement('div');
                     repliesContainer.className = 'replies-container';
                     
-                    replies.forEach(reply => {
+                    // Sort replies chronologically (oldest first for conversations)
+                    replies.sort((a, b) => {
+                        const timeA = a.timestamp?.seconds ? a.timestamp.seconds * 1000 : 0;
+                        const timeB = b.timestamp?.seconds ? b.timestamp.seconds * 1000 : 0;
+                        return timeA - timeB;
+                    }).forEach(reply => {
+                        // Store username and profile image
+                        const replyId = reply.id;
+                        
+                        if (reply.username) {
+                            commentUsernames.set(replyId, reply.username);
+                        } else if (!commentUsernames.has(replyId)) {
+                            commentUsernames.set(replyId, generateUsername());
+                        }
+                        
+                        if (reply.profileImage) {
+                            commentProfiles.set(replyId, reply.profileImage);
+                        } else if (!commentProfiles.has(replyId)) {
+                            commentProfiles.set(replyId, generateProfileImage());
+                        }
+                        
                         const replyElement = createCommentElement(reply.text, reply.isAuthor, reply.timestamp);
                         replyElement.classList.add('reply');
-                        replyElement.dataset.commentId = reply.id;
                         repliesContainer.appendChild(replyElement);
                     });
                     
                     commentElement.appendChild(repliesContainer);
-                }
-            });
-            
-            // Update comment count on button
-            const tweetElement = document.querySelector(`.tweet[data-tweet-id="${tweetId}"]`);
-            if (tweetElement) {
-                const commentBtn = tweetElement.querySelector('.comment-btn span');
-                if (commentBtn) {
-                    commentBtn.textContent = comments.length;
-                }
-            }
-        }
-        
-        // Show reply form for a specific comment
-        function showReplyForm(commentElement, tweetId, commentId) {
-            // Check if form already exists
-            if (commentElement.querySelector('.reply-form')) return;
-            
-            const replyForm = document.createElement('div');
-            replyForm.className = 'reply-form';
-            replyForm.innerHTML = `
-                <input type="text" class="reply-input" placeholder="Write a reply...">
-                <button class="reply-submit">Reply</button>
-            `;
-            
-            // Add reply submit handler
-            replyForm.querySelector('.reply-submit').addEventListener('click', async () => {
-                const replyText = replyForm.querySelector('.reply-input').value.trim();
-                if (replyText) {
-                    try {
-                        const submitBtn = replyForm.querySelector('.reply-submit');
-                        submitBtn.disabled = true;
-                        submitBtn.textContent = 'Sending...';
-                        
-                        // Add reply to database
-                        await dbOperations.addComment(tweetId, replyText, commentId);
-                        
-                        // Remove the form
-                        replyForm.remove();
-                        
-                        // Show notification
-                        showNotification('Reply posted!');
-                        
-                    } catch (error) {
-                        console.error("Error posting reply:", error);
-                        alert('Failed to post reply. Please try again.');
-                    }
-                }
-            });
-            
-            commentElement.appendChild(replyForm);
-            replyForm.querySelector('.reply-input').focus();
-        }
-
-        // Now load reaction panel on click
-        function showReactionPanel(button, tweetId) {
-            // Close any open reaction panels first
-            document.querySelectorAll('.reaction-panel').forEach(panel => panel.remove());
-            
-            const panel = document.createElement('div');
-            panel.className = 'reaction-panel';
-            
-            // Common emoji reactions
-            const reactions = ['👍', '❤️', '😂', '😮', '😢', '👏', '🔥', '🎉'];
-            
-            reactions.forEach(emoji => {
-                const btn = document.createElement('button');
-                btn.textContent = emoji;
-                btn.addEventListener('click', async () => {
-                    try {
-                        // Add visual feedback immediately
-                        button.innerHTML = `<span class="reaction-emoji">${emoji}</span>`;
-                        button.classList.add('active');
-                        
-                        // Add juice effect on click
-                        createJuiceEffect(button);
-                        
-                        // Add to database
-                        await dbOperations.addReaction(tweetId, emoji);
-                        
-                        // Remove panel after selection
-                        panel.remove();
-                        
-                    } catch (error) {
-                        console.error("Error adding reaction:", error);
-                        alert('Failed to add reaction. Please try again.');
-                    }
-                });
-                panel.appendChild(btn);
-            });
-            
-            // Add to document first so we can measure it
-            document.body.appendChild(panel);
-            
-            // Position the panel - center horizontally on mobile, or above the button on desktop
-            const rect = button.getBoundingClientRect();
-            const panelRect = panel.getBoundingClientRect();
-            const isMobile = window.innerWidth <= 480;
-            
-            if (isMobile) {
-                // Center horizontally on mobile
-                panel.style.top = `${rect.bottom + window.scrollY + 10}px`;
-                panel.style.left = '50%';
-                panel.style.transform = 'translateX(-50%)';
-            } else {
-                // Position above the button with enough space
-                const leftPosition = Math.max(10, rect.left + window.scrollX - (panelRect.width - rect.width) / 2);
-                // Ensure panel doesn't go off-screen to the right
-                const rightEdge = leftPosition + panelRect.width;
-                const windowWidth = window.innerWidth;
-                const finalLeft = rightEdge > windowWidth - 10 ? windowWidth - panelRect.width - 10 : leftPosition;
-                
-                panel.style.top = `${rect.bottom + window.scrollY + 10}px`;
-                panel.style.left = `${finalLeft}px`;
-            }
-            
-            // Close panel when clicking outside
-            document.addEventListener('click', function closePanel(e) {
-                if (!panel.contains(e.target) && e.target !== button) {
-                    panel.remove();
-                    document.removeEventListener('click', closePanel);
                 }
             });
         }
@@ -484,6 +1550,10 @@
             div.className = 'tweet';
             div.dataset.tweetId = tweetId;
             
+            // Store timestamp for future updates
+            const timestampValue = timestamp.getTime ? timestamp.getTime() : timestamp;
+            div.dataset.timestamp = timestampValue;
+            
             // Add click handler to mark post as read when clicked
             div.addEventListener('click', function() {
                 if (newPostIds.has(tweetId)) {
@@ -491,17 +1561,77 @@
                 }
             });
             
+            // Generate username and profile image if not already generated for this tweet
+            if (!tweetUsernames.has(tweetId)) {
+                tweetUsernames.set(tweetId, generateUsername());
+            }
+            
+            if (!tweetProfiles.has(tweetId)) {
+                tweetProfiles.set(tweetId, generateProfileImage());
+            }
+            
+            const username = tweetUsernames.get(tweetId);
+            const profileImage = tweetProfiles.get(tweetId);
+            
             const authorBadge = document.createElement('div');
             authorBadge.className = 'author-badge';
-            authorBadge.innerHTML = `
-                <div class="author-avatar">
-                    <i class="fas fa-user-secret"></i>
-                </div>
-                <div class="author-info">
-                    <div class="author-name">Anonymous</div>
+            
+            // Create avatar separately to handle image loading errors
+            const authorAvatar = document.createElement('div');
+            authorAvatar.className = 'author-avatar';
+            
+            const imgElement = document.createElement('img');
+            imgElement.src = profileImage;
+            imgElement.alt = "Profile picture";
+            imgElement.className = 'profile-image';
+            
+            // Handle image loading error
+            imgElement.onerror = function() {
+                // Replace with fallback initial-based image
+                const initials = username.substring(0, 2);
+                this.parentNode.innerHTML = `<div class="fallback-avatar">${initials}</div>`;
+            };
+            
+            authorAvatar.appendChild(imgElement);
+            
+            // Create author info div
+            const authorInfo = document.createElement('div');
+            authorInfo.className = 'author-info';
+            
+            // Get tweet data from Firestore to check if it's an admin post
+            dbOperations.getTweetData(tweetId).then(tweetData => {
+                if (tweetData && tweetData.isAdmin) {
+                    // Add admin styling
+                    authorInfo.innerHTML = `
+                        <div class="author-name admin-name">Admin</div>
+                        <div class="author-handle">@admin</div>
+                    `;
+                    // Add admin class to tweet for styling
+                    div.classList.add('admin-tweet');
+                } else {
+                    authorInfo.innerHTML = `
+                        <div class="author-name">${username}</div>
+                        <div class="author-handle">@anonymous${tweetNumber}</div>
+                    `;
+                }
+            }).catch(error => {
+                console.error("Error fetching tweet data:", error);
+                // Fallback to regular user display
+                authorInfo.innerHTML = `
+                    <div class="author-name">${username}</div>
                     <div class="author-handle">@anonymous${tweetNumber}</div>
-                </div>
-            `;
+                `;
+            });
+            
+            // Create timestamp div
+            const tweetTime = document.createElement('div');
+            tweetTime.className = 'tweet-time';
+            tweetTime.textContent = formatTimestamp(timestamp);
+            
+            // Assemble author badge
+            authorBadge.appendChild(authorAvatar);
+            authorBadge.appendChild(authorInfo);
+            authorBadge.appendChild(tweetTime);
             
             const content = document.createElement('div');
             content.className = 'tweet-content';
@@ -537,7 +1667,28 @@
                         commentSubmit.disabled = true;
                         commentSubmit.classList.add('loading');
                         
-                        await dbOperations.addComment(tweetId, commentText);
+                        // Filter profanity from the comment text
+                        const filteredComment = filterProfanity(commentText);
+                        
+                        // Generate username and profile for this comment
+                        const username = generateUsername();
+                        const profileImage = generateProfileImage();
+                        
+                        // Create a new commentId
+                        const newCommentId = 'comment_' + Math.random().toString(36).substr(2, 9);
+                        
+                        // Store the username and profile in the maps
+                        commentUsernames.set(newCommentId, username);
+                        commentProfiles.set(newCommentId, profileImage);
+                        
+                        // Add comment to database with data
+                        const comment = {
+                            text: filteredComment,
+                            username: username,
+                            profileImage: profileImage
+                        };
+                        
+                        await dbOperations.addComment(tweetId, comment);
                         
                         commentInput.value = '';
                         
@@ -569,28 +1720,58 @@
             // Like button
             const likeBtn = document.createElement('button');
             likeBtn.className = 'interaction-btn like-btn';
-            likeBtn.innerHTML = '<i class="far fa-heart"></i>';
+            
+            // Check if user has already liked this tweet
+            const userId = getUserId();
+            dbOperations.checkLike(tweetId, userId).then(hasLiked => {
+                const likeCounterSpan = likeBtn.querySelector('.like-counter');
+                if (hasLiked) {
+                    likeBtn.classList.add('active');
+                    likeBtn.innerHTML = '<i class="fas fa-heart"></i><span class="like-counter">0</span>';
+                } else {
+                    likeBtn.classList.remove('active'); // Ensure it's not active initially if not liked
+                    likeBtn.innerHTML = '<i class="far fa-heart"></i><span class="like-counter">0</span>';
+                }
+                
+                // Get initial like count and set up listener
+                updateLikeCount(tweetId, likeBtn.querySelector('.like-counter')); // Pass the correct counter span
+            }).catch(error => {
+                console.error("Error checking like status:", error);
+                likeBtn.innerHTML = '<i class="far fa-heart"></i><span class="like-counter">0</span>';
+                // Still try to setup listener even if check fails
+                updateLikeCount(tweetId, likeBtn.querySelector('.like-counter'));
+            });
             
             // Add like functionality
             likeBtn.addEventListener('click', async function() {
                 try {
                     likeBtn.classList.add('processing');
+                    // const likeCounter = likeBtn.querySelector('.like-counter'); // No longer needed here
+                    // const currentCount = parseInt(likeCounter.textContent) || 0; // No longer needed here
                     
                     if (likeBtn.classList.contains('active')) {
                         // Unlike
                         await dbOperations.removeLike(tweetId);
-                        likeBtn.classList.remove('active');
+                        // likeBtn.classList.remove('active'); // Let onSnapshot handle UI update
+                        // likeBtn.innerHTML = `<i class="far fa-heart"></i><span class="like-counter">${Math.max(0, currentCount - 1)}</span>`; // Let onSnapshot handle UI update
                     } else {
                         // Like
                         await dbOperations.addLike(tweetId);
-                        likeBtn.classList.add('active');
+                        // likeBtn.classList.add('active'); // Let onSnapshot handle UI update
+                        // likeBtn.innerHTML = `<i class="fas fa-heart"></i><span class="like-counter">${currentCount + 1}</span>`; // Let onSnapshot handle UI update
                         
-                        // Add animation
+                        // Add animation (Keep this visual feedback)
                         const heart = document.createElement('div');
                         heart.className = 'heart-burst';
                         likeBtn.appendChild(heart);
                         setTimeout(() => heart.remove(), 1000);
                     }
+                    
+                    // Ensure the like count updates via the listener by calling updateLikeCount if needed,
+                    // although the listener should ideally already be active.
+                    // Calling it again ensures it's set up if it wasn't for some reason.
+                    updateLikeCount(tweetId, likeBtn.querySelector('.like-counter'));
+                    
                 } catch (error) {
                     console.error("Error toggling like:", error);
                 } finally {
@@ -608,10 +1789,41 @@
                 showReactionPanel(this, tweetId);
             });
 
-            // Report button
+            // Report button with flag functionality
             const reportBtn = document.createElement('button');
             reportBtn.className = 'interaction-btn report-btn';
             reportBtn.innerHTML = '<i class="fas fa-flag"></i>';
+            
+            // Add flag functionality
+            reportBtn.addEventListener('click', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                try {
+                    // Don't allow reporting if other actions are in progress
+                    if (isReportDialogOpen) return;
+                    
+                    // Check if user has already flagged this post
+                    const hasUserFlagged = await dbOperations.hasUserFlagged(tweetId);
+                    
+                    if (hasUserFlagged) {
+                        showNotification('You have already reported this post', 'warning');
+                        return;
+                    }
+                    
+                    // Show confirmation dialog
+                    const reportDialog = document.getElementById('reportDialog');
+                    reportDialog.classList.add('active');
+                    isReportDialogOpen = true;
+                    
+                    // Store current tweet ID to use when user confirms
+                    reportDialog.dataset.tweetId = tweetId;
+                    
+                } catch (error) {
+                    console.error("Error checking flag status:", error);
+                    showNotification('Error checking report status', 'error');
+                }
+            });
 
             interactions.appendChild(commentBtn);
             interactions.appendChild(likeBtn);
@@ -635,19 +1847,69 @@
         function createCommentElement(text, isAuthor = false, timestamp = new Date()) {
             const comment = document.createElement('div');
             comment.className = 'comment';
-            comment.innerHTML = `
-                <div class="comment-avatar">
-                    <i class="fas fa-user-secret"></i>
-                </div>
-                <div class="comment-content">
-                    <span class="comment-author">
-                        Anonymous
-                        ${isAuthor ? '<span class="author-tag">Author</span>' : ''}
-                    </span>
-                    <p>${text}</p>
-                    <span class="comment-time">${formatTimestamp(timestamp)}</span>
-                </div>
+            
+            // Store timestamp for future updates
+            let timestampValue;
+            if (timestamp && timestamp.seconds) {
+                timestampValue = timestamp.seconds * 1000;
+            } else if (timestamp instanceof Date) {
+                timestampValue = timestamp.getTime();
+            } else if (typeof timestamp === 'number') {
+                timestampValue = timestamp;
+            } else {
+                timestampValue = Date.now();
+            }
+            comment.dataset.timestamp = timestampValue;
+            
+            // Generate a unique ID for the comment if not already exists
+            const commentId = 'comment_' + Math.random().toString(36).substr(2, 9);
+            comment.dataset.commentId = commentId;
+            
+            // Generate username and profile image if not already generated for this comment
+            if (!commentUsernames.has(commentId)) {
+                commentUsernames.set(commentId, generateUsername());
+            }
+            
+            if (!commentProfiles.has(commentId)) {
+                commentProfiles.set(commentId, generateProfileImage());
+            }
+            
+            const username = commentUsernames.get(commentId);
+            const profileImage = commentProfiles.get(commentId);
+            
+            // Create comment avatar
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = 'comment-avatar';
+            
+            const imgElement = document.createElement('img');
+            imgElement.src = profileImage;
+            imgElement.alt = "Profile";
+            imgElement.className = 'profile-image comment-profile';
+            
+            // Handle image loading error
+            imgElement.onerror = function() {
+                // Replace with fallback initial-based image
+                const initials = username.substring(0, 2);
+                this.parentNode.innerHTML = `<div class="fallback-avatar comment-fallback">${initials}</div>`;
+            };
+            
+            avatarDiv.appendChild(imgElement);
+            
+            // Create comment content
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'comment-content';
+            contentDiv.innerHTML = `
+                <span class="comment-author">
+                    ${username}
+                    ${isAuthor ? '<span class="author-tag">Author</span>' : ''}
+                </span>
+                <p>${text}</p>
+                <span class="comment-time">${formatTimestamp(timestamp)}</span>
             `;
+            
+            comment.appendChild(avatarDiv);
+            comment.appendChild(contentDiv);
+            
             return comment;
         }
 
@@ -668,22 +1930,6 @@
                 notification.classList.remove('show');
                 setTimeout(() => notification.remove(), 300);
             }, 3000);
-        }
-
-        // Add a helper function to format timestamps
-        function formatTimestamp(timestamp) {
-            if (!timestamp) return 'Just now';
-            
-            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-            const now = new Date();
-            const diff = (now - date) / 1000; // difference in seconds
-
-            if (diff < 60) return 'Just now';
-            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-            if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`;
-            
-            return date.toLocaleDateString();
         }
 
         function createJuiceEffect(element) {
@@ -714,11 +1960,38 @@
 
         // Add this function to show loading overlay
         function showLoadingOverlay() {
+            // Remove any existing overlay first
+            hideLoadingOverlay();
+            
+            // Create a fresh overlay
             const overlay = document.createElement('div');
             overlay.className = 'loading-overlay';
+            overlay.id = 'loadingOverlay';
+            overlay.style.opacity = '0'; // Start with opacity 0
             overlay.innerHTML = '<div class="loading-spinner"></div>';
             document.body.appendChild(overlay);
+            
+            // Force reflow before setting opacity to 1 for transition to work
+            overlay.offsetHeight;
+            overlay.style.transition = 'opacity 0.3s ease';
+            overlay.style.opacity = '1';
+            
             return overlay;
+        }
+        
+        // Add function to hide the loading overlay
+        function hideLoadingOverlay() {
+            const overlay = document.querySelector('.loading-overlay');
+            if (overlay) {
+                overlay.style.transition = 'opacity 0.3s ease';
+                overlay.style.opacity = '0';
+                
+                setTimeout(() => {
+                    if (overlay.parentNode) {
+                        overlay.parentNode.removeChild(overlay);
+                    }
+                }, 300);
+            }
         }
 
         // Replace the scroll-to-top button creation and event listeners with this:
@@ -856,14 +2129,241 @@
                 localStorage.setItem('readPosts', JSON.stringify([...readPosts]));
             }
         }
+
+        // Function to show reaction panel with improved mobile support
+        function showReactionPanel(buttonElement, tweetId) {
+            // Remove any existing reaction panels first
+            const existingPanels = document.querySelectorAll('.reaction-panel');
+            existingPanels.forEach(panel => panel.remove());
+            
+            // Also remove any existing backdrops
+            const existingBackdrops = document.querySelectorAll('.reaction-backdrop');
+            existingBackdrops.forEach(backdrop => backdrop.remove());
+            
+            // Create the reaction panel
+            const reactionPanel = document.createElement('div');
+            reactionPanel.className = 'reaction-panel';
+            
+            // Common emojis for reactions
+            const emojis = ['👍', '❤️', '😂', '😮', '😢', '👏', '🔥', '🎉', '🤔', '💯'];
+            
+            // Add emoji buttons to the panel
+            emojis.forEach(emoji => {
+                const emojiButton = document.createElement('button');
+                emojiButton.innerHTML = emoji;
+                emojiButton.title = `React with ${emoji}`;
+                
+                // Add click handler for each emoji
+                emojiButton.addEventListener('click', async (event) => {
+                    // Prevent event bubbling to avoid panel being closed immediately
+                    event.stopPropagation();
+                    
+                    try {
+                        // Add loading state
+                        emojiButton.classList.add('loading');
+                        
+                        // Get user's current reaction
+                        const reactionsData = await dbOperations.getReactions(tweetId);
+                        const currentReaction = reactionsData.userReaction;
+                        
+                        if (currentReaction === emoji) {
+                            // User clicked the same emoji - remove the reaction
+                            await dbOperations.removeReaction(tweetId, emoji);
+                        } else {
+                            // If user already has a different reaction, remove it first
+                            if (currentReaction) {
+                                await dbOperations.removeReaction(tweetId, currentReaction);
+                            }
+                            
+                            // Add the new reaction
+                            await dbOperations.addReaction(tweetId, emoji);
+                        }
+                        
+                        // Close the panel after selection
+                        closeReactionPanel();
+                        
+                    } catch (error) {
+                        console.error("Error handling reaction:", error);
+                        showNotification('Failed to add reaction', 'error');
+                    } finally {
+                        emojiButton.classList.remove('loading');
+                    }
+                });
+                
+                reactionPanel.appendChild(emojiButton);
+            });
+            
+            // Add panel to the document
+            document.body.appendChild(reactionPanel);
+            
+            // Function to close the panel and clean up
+            function closeReactionPanel() {
+                // Remove panel
+                if (document.body.contains(reactionPanel)) {
+                    reactionPanel.remove();
+                }
+                
+                // Remove backdrop if it exists
+                const backdrop = document.querySelector('.reaction-backdrop');
+                if (backdrop) backdrop.remove();
+                
+                // Remove event listeners
+                if (typeof closeOnClickHandler === 'function') {
+                    document.removeEventListener('click', closeOnClickHandler);
+                }
+            }
+            
+            // Get dimensions
+            const buttonRect = buttonElement.getBoundingClientRect();
+            const isMobile = window.innerWidth <= 768;
+            
+            if (isMobile) {
+                // For mobile, create a backdrop
+                const backdrop = document.createElement('div');
+                backdrop.className = 'reaction-backdrop';
+                document.body.insertBefore(backdrop, reactionPanel);
+                
+                // Close when backdrop is clicked
+                backdrop.addEventListener('click', closeReactionPanel);
+                
+                // Position at bottom of screen
+                reactionPanel.classList.add('mobile-panel');
+                reactionPanel.style.position = 'fixed';
+                reactionPanel.style.bottom = '20px';
+                reactionPanel.style.left = '50%';
+                reactionPanel.style.transform = 'translateX(-50%)';
+                reactionPanel.style.zIndex = '2000';
+                
+                // Add touch-specific handling
+                reactionPanel.style.touchAction = 'none';
+                
+                // Prevent default on touchstart to avoid scrolling issues
+                reactionPanel.addEventListener('touchstart', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                }, { passive: false });
+            } else {
+                // For desktop, position near the button
+                // Calculate panel dimensions after adding to DOM
+                const panelRect = reactionPanel.getBoundingClientRect();
+                
+                // Position above button if there's room, otherwise below
+                const top = buttonRect.top - panelRect.height - 10;
+                
+                if (top < 10) {
+                    // Position below button
+                    reactionPanel.style.top = (buttonRect.bottom + 10) + 'px';
+                } else {
+                    // Position above button
+                    reactionPanel.style.top = top + 'px';
+                }
+                
+                // Center horizontally relative to button
+                const left = Math.max(10, buttonRect.left + (buttonRect.width / 2) - (panelRect.width / 2));
+                reactionPanel.style.left = left + 'px';
+                
+                // Close when clicking outside
+                const closeOnClickHandler = (event) => {
+                    if (!reactionPanel.contains(event.target) && event.target !== buttonElement) {
+                        closeReactionPanel();
+                    }
+                };
+                
+                // Delay adding click handler to prevent immediate closing
+                setTimeout(() => {
+                    document.addEventListener('click', closeOnClickHandler);
+                }, 100);
+            }
+            
+            // Add animation class
+            reactionPanel.classList.add('showing');
+            
+            // Auto-close after 5 seconds of inactivity
+            setTimeout(() => {
+                closeReactionPanel();
+            }, 5000);
+            
+            // Return the closePanel function so it can be called externally
+            return closeReactionPanel;
+        }
+
+        // Function to update like count
+        async function updateLikeCount(tweetId, counterElement) {
+            try {
+                // Set up real-time listener for likes collection only once per tweetId
+                if (!activeListeners[`likes_${tweetId}`]) {
+                    // Get db from dbOperations if needed, assuming it's available globally or passed
+                    const db = dbOperations.getFirestoreInstance(); // Make sure getFirestoreInstance() exists in dbOperations
+                    if (!db) {
+                        console.error("Firestore instance not available in dbOperations");
+                        return; 
+                    }
+                    const likesRef = collection(db, 'tweets', tweetId, 'likes');
+                    
+                    const unsubscribe = onSnapshot(likesRef, (snapshot) => {
+                        const likeCount = snapshot.size;
+                        // Update the counter element if it exists
+                        if (counterElement) {
+                           counterElement.textContent = likeCount;
+                        }
+                        
+                        // Also update the button's active state based on user's like
+                        const likeBtn = counterElement?.closest('.like-btn'); // Find parent like button
+                        if (likeBtn) {
+                            const userId = getUserId();
+                            // Check if the current user's ID exists in the snapshot docs (more efficient than checkLike)
+                            let userHasLiked = false;
+                            snapshot.forEach(doc => {
+                                if (doc.id === userId) {
+                                    userHasLiked = true;
+                                }
+                            });
+
+                            if (userHasLiked) {
+                                if (!likeBtn.classList.contains('active')) {
+                                    likeBtn.classList.add('active');
+                                    likeBtn.innerHTML = `<i class="fas fa-heart"></i><span class="like-counter">${likeCount}</span>`;
+                                } else {
+                                     // Just update count if already active
+                                     likeBtn.querySelector('.like-counter').textContent = likeCount;
+                                }
+                            } else {
+                                if (likeBtn.classList.contains('active')) {
+                                    likeBtn.classList.remove('active');
+                                    likeBtn.innerHTML = `<i class="far fa-heart"></i><span class="like-counter">${likeCount}</span>`;
+                                } else {
+                                    // Just update count if already inactive
+                                    likeBtn.querySelector('.like-counter').textContent = likeCount;
+                                }
+                            }
+                        }
+                        
+                    }, (error) => { // Add error handling for the listener
+                        console.error(`Error listening to likes for tweet ${tweetId}:`, error);
+                        if (counterElement) {
+                            counterElement.textContent = '?'; // Indicate error
+                        }
+                    });
+                    
+                    // Store the unsubscribe function
+                    activeListeners[`likes_${tweetId}`] = unsubscribe;
+                    console.log(`Like listener added for tweet ${tweetId}`);
+                } else {
+                     // If listener exists, ensure the counter element reference is updated if necessary
+                     // This part might be redundant if the element reference doesn't change.
+                     console.log(`Like listener already exists for tweet ${tweetId}`);
+                }
+            } catch (error) {
+                console.error(`Error setting up like listener for tweet ${tweetId}:`, error);
+                if (counterElement) {
+                    counterElement.textContent = '?'; // Indicate error setting up
+                }
+            }
+        }
     </script>
     <button class="scroll-to-top" aria-label="Scroll to top">
         <i class="fas fa-arrow-up"></i>
     </button>
-    
-    <!-- Admin Link (hidden at the bottom) -->
-    <div style="text-align: center; padding: 20px; opacity: 0.5; font-size: 0.8rem;">
-        <a href="/admin" style="color: #777; text-decoration: none;">Admin Panel</a>
-    </div>
 </body>
 </html>
+
