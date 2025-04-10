@@ -11,7 +11,12 @@ import {
     setDoc,
     deleteDoc,
     serverTimestamp,
-    getDoc
+    getDoc,
+    onSnapshot,
+    where,
+    updateDoc,
+    arrayUnion,
+    increment
 } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -151,15 +156,63 @@ export const dbOperations = {
         }
     },
 
-    addReaction: async (tweetId, userId, emoji) => {
+    addReaction: async (tweetId, emoji) => {
         try {
+            const userId = getUserId();
             const reactionRef = doc(db, 'tweets', tweetId, 'reactions', userId);
-            await setDoc(reactionRef, {
-                emoji: emoji,
-                timestamp: serverTimestamp()
+            
+            // First check if user already reacted
+            const reactionDoc = await getDoc(reactionRef);
+            
+            if (reactionDoc.exists()) {
+                // Update existing reaction
+                await updateDoc(reactionRef, {
+                    emoji: emoji,
+                    timestamp: serverTimestamp()
+                });
+            } else {
+                // Create new reaction
+                await setDoc(reactionRef, {
+                    emoji: emoji,
+                    userId: userId,
+                    timestamp: serverTimestamp()
+                });
+            }
+            
+            // Update reaction count in the tweet document
+            const tweetRef = doc(db, 'tweets', tweetId);
+            await updateDoc(tweetRef, {
+                [`reactionCounts.${emoji}`]: increment(1)
             });
+            
+            return true;
         } catch (error) {
             console.error("Error adding reaction:", error);
+            throw error;
+        }
+    },
+
+    removeReaction: async (tweetId, emoji) => {
+        try {
+            const userId = getUserId();
+            const reactionRef = doc(db, 'tweets', tweetId, 'reactions', userId);
+            
+            // Check if reaction exists
+            const reactionDoc = await getDoc(reactionRef);
+            if (reactionDoc.exists()) {
+                // Update reaction count in the tweet document
+                const tweetRef = doc(db, 'tweets', tweetId);
+                await updateDoc(tweetRef, {
+                    [`reactionCounts.${emoji}`]: increment(-1)
+                });
+                
+                // Delete the reaction
+                await deleteDoc(reactionRef);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error("Error removing reaction:", error);
             throw error;
         }
     },
@@ -168,27 +221,70 @@ export const dbOperations = {
         try {
             const reactionsRef = collection(db, 'tweets', tweetId, 'reactions');
             const snapshot = await getDocs(reactionsRef);
+            
+            // Group reactions by emoji
             const reactions = {};
             snapshot.forEach(doc => {
-                const emoji = doc.data().emoji;
+                const data = doc.data();
+                const emoji = data.emoji;
                 reactions[emoji] = (reactions[emoji] || 0) + 1;
             });
-            return reactions;
+            
+            // Check if current user has reacted
+            const userId = getUserId();
+            const userReactionRef = doc(db, 'tweets', tweetId, 'reactions', userId);
+            const userReactionDoc = await getDoc(userReactionRef);
+            
+            return {
+                counts: reactions,
+                userReaction: userReactionDoc.exists() ? userReactionDoc.data().emoji : null
+            };
         } catch (error) {
             console.error("Error getting reactions:", error);
             throw error;
         }
     },
 
-    // Add comment to a tweet
-    addComment: async function(tweetId, commentText) {
+    // Enhanced comment methods with thread support
+    addComment: async function(tweetId, commentText, parentCommentId = null) {
         try {
-            const commentRef = await addDoc(collection(db, 'tweets', tweetId, 'comments'), {
+            // Determine if this is a top-level comment or a reply
+            const commentData = {
                 text: commentText,
                 userId: getUserId(),
                 timestamp: serverTimestamp(),
-                isAuthor: true // This will be true for the comment creator
+                parentId: parentCommentId,
+                isAuthor: true,
+                replies: []
+            };
+            
+            let commentRef;
+            if (parentCommentId) {
+                // This is a reply to another comment
+                commentRef = await addDoc(
+                    collection(db, 'tweets', tweetId, 'comments'), 
+                    commentData
+                );
+                
+                // Update the parent comment to reference this reply
+                const parentRef = doc(db, 'tweets', tweetId, 'comments', parentCommentId);
+                await updateDoc(parentRef, {
+                    replies: arrayUnion(commentRef.id)
+                });
+            } else {
+                // This is a top-level comment
+                commentRef = await addDoc(
+                    collection(db, 'tweets', tweetId, 'comments'), 
+                    commentData
+                );
+            }
+            
+            // Update comment count on the tweet
+            const tweetRef = doc(db, 'tweets', tweetId);
+            await updateDoc(tweetRef, {
+                commentCount: increment(1)
             });
+            
             return commentRef.id;
         } catch (error) {
             console.error("Error adding comment: ", error);
@@ -196,11 +292,47 @@ export const dbOperations = {
         }
     },
 
-    // Get comments for a tweet
     getComments: async function(tweetId) {
         try {
             const commentsRef = collection(db, 'tweets', tweetId, 'comments');
             const q = query(commentsRef, orderBy('timestamp', 'desc'));
+            const querySnapshot = await getDocs(q);
+            
+            const comments = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                isAuthor: doc.data().userId === getUserId()
+            }));
+            
+            // Organize into threads
+            const threadedComments = [];
+            const commentMap = {};
+            
+            // First, create a map of comments by ID
+            comments.forEach(comment => {
+                commentMap[comment.id] = comment;
+            });
+            
+            // Then separate top-level comments and replies
+            comments.forEach(comment => {
+                if (!comment.parentId) {
+                    // This is a top-level comment
+                    threadedComments.push(comment);
+                }
+            });
+            
+            return threadedComments;
+        } catch (error) {
+            console.error("Error getting comments: ", error);
+            throw error;
+        }
+    },
+    
+    // Get replies to a specific comment
+    getReplies: async function(tweetId, commentId) {
+        try {
+            const commentsRef = collection(db, 'tweets', tweetId, 'comments');
+            const q = query(commentsRef, where('parentId', '==', commentId), orderBy('timestamp', 'asc'));
             const querySnapshot = await getDocs(q);
             
             return querySnapshot.docs.map(doc => ({
@@ -209,7 +341,95 @@ export const dbOperations = {
                 isAuthor: doc.data().userId === getUserId()
             }));
         } catch (error) {
-            console.error("Error getting comments: ", error);
+            console.error("Error getting replies: ", error);
+            throw error;
+        }
+    },
+    
+    // Real-time listeners for tweets, comments, and reactions
+    onTweetsUpdate: (callback) => {
+        try {
+            const tweetsRef = collection(db, 'tweets');
+            const q = query(tweetsRef, orderBy('timestamp', 'desc'));
+            
+            return onSnapshot(q, (snapshot) => {
+                const tweets = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                callback(tweets);
+            });
+        } catch (error) {
+            console.error("Error setting up tweet listener:", error);
+            throw error;
+        }
+    },
+    
+    onCommentsUpdate: (tweetId, callback) => {
+        try {
+            const commentsRef = collection(db, 'tweets', tweetId, 'comments');
+            const q = query(commentsRef, orderBy('timestamp', 'desc'));
+            
+            return onSnapshot(q, (snapshot) => {
+                const comments = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    isAuthor: doc.data().userId === getUserId()
+                }));
+                callback(comments);
+            });
+        } catch (error) {
+            console.error("Error setting up comment listener:", error);
+            throw error;
+        }
+    },
+    
+    onReactionsUpdate: (tweetId, callback) => {
+        try {
+            const reactionsRef = collection(db, 'tweets', tweetId, 'reactions');
+            
+            return onSnapshot(reactionsRef, async (snapshot) => {
+                // Group reactions by emoji
+                const reactions = {};
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const emoji = data.emoji;
+                    reactions[emoji] = (reactions[emoji] || 0) + 1;
+                });
+                
+                // Check if current user has reacted
+                const userId = getUserId();
+                const userReactionRef = doc(db, 'tweets', tweetId, 'reactions', userId);
+                const userReactionDoc = await getDoc(userReactionRef);
+                
+                callback({
+                    counts: reactions,
+                    userReaction: userReactionDoc.exists() ? userReactionDoc.data().emoji : null
+                });
+            });
+        } catch (error) {
+            console.error("Error setting up reaction listener:", error);
+            throw error;
+        }
+    },
+    
+    // Add these new methods for notification support
+    getTweetsAfterTimestamp: async (timestamp) => {
+        try {
+            const tweetsRef = collection(db, 'tweets');
+            const q = query(
+                tweetsRef, 
+                where('timestamp', '>', timestamp),
+                orderBy('timestamp', 'desc')
+            );
+            const querySnapshot = await getDocs(q);
+            
+            return querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+        } catch (error) {
+            console.error("Error getting new tweets:", error);
             throw error;
         }
     }
